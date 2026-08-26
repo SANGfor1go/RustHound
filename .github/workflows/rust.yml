@@ -35,10 +35,10 @@ jobs:
             install_deps: false
 
           # macOS Apple Silicon (可选，如需编译请取消注释)
-          # - os: macos-latest
-          #   target: aarch64-apple-darwin
-          #   ext: ""
-          #   install_deps: false
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            ext: ""
+            install_deps: false
 
     runs-on: ${{ matrix.os }}
 
