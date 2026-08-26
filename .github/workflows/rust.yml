@@ -17,8 +17,7 @@ jobs:
       fail-fast: false
       matrix:
         features:
-          - name: "default"
-            flag: ""
+          # macOS GSSAPI 不支持 IOV 功能，只构建 nogssapi
           - name: "nogssapi"
             flag: "--no-default-features --features nogssapi"
     steps:
@@ -35,10 +34,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: macos-arm64-${{ matrix.features.name }}-v2-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: macos-arm64-${{ matrix.features.name }}-v2-
+          key: macos-arm64-nogssapi-v2-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: macos-arm64-nogssapi-v2-
 
-      - name: Build (${{ matrix.features.name }})
+      - name: Build (nogssapi)
         run: |
           set -o pipefail
           cargo build --release --target aarch64-apple-darwin ${{ matrix.features.flag }} --verbose 2>&1 | tee build.log
@@ -47,7 +46,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: log-macos-arm64-${{ matrix.features.name }}
+          name: log-macos-arm64-nogssapi
           path: build.log
 
       - name: Verify binary exists
@@ -60,16 +59,16 @@ jobs:
         run: |
           BIN="target/aarch64-apple-darwin/release/rusthound"
           codesign --force --sign - "$BIN" || true
-          tar czf "rusthound-macos-arm64-${{ matrix.features.name }}.tar.gz" -C target/aarch64-apple-darwin/release rusthound
-          shasum -a 256 "rusthound-macos-arm64-${{ matrix.features.name }}.tar.gz" > "rusthound-macos-arm64-${{ matrix.features.name }}.tar.gz.sha256"
+          tar czf "rusthound-macos-arm64-nogssapi.tar.gz" -C target/aarch64-apple-darwin/release rusthound
+          shasum -a 256 "rusthound-macos-arm64-nogssapi.tar.gz" > "rusthound-macos-arm64-nogssapi.tar.gz.sha256"
 
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: rusthound-macos-arm64-${{ matrix.features.name }}
+          name: rusthound-macos-arm64-nogssapi
           path: |
-            rusthound-macos-arm64-${{ matrix.features.name }}.tar.gz
-            rusthound-macos-arm64-${{ matrix.features.name }}.tar.gz.sha256
+            rusthound-macos-arm64-nogssapi.tar.gz
+            rusthound-macos-arm64-nogssapi.tar.gz.sha256
 
   build-macos-x86_64:
     runs-on: macos-13
@@ -77,8 +76,6 @@ jobs:
       fail-fast: false
       matrix:
         features:
-          - name: "default"
-            flag: ""
           - name: "nogssapi"
             flag: "--no-default-features --features nogssapi"
     steps:
@@ -93,9 +90,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: macos-x86_64-${{ matrix.features.name }}-v2-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: macos-x86_64-${{ matrix.features.name }}-v2-
-      - name: Build (${{ matrix.features.name }})
+          key: macos-x86_64-nogssapi-v2-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: macos-x86_64-nogssapi-v2-
+      - name: Build (nogssapi)
         run: |
           set -o pipefail
           cargo build --release --target x86_64-apple-darwin ${{ matrix.features.flag }} --verbose 2>&1 | tee build.log
@@ -103,7 +100,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: log-macos-x86_64-${{ matrix.features.name }}
+          name: log-macos-x86_64-nogssapi
           path: build.log
       - name: Verify binary exists
         if: success()
@@ -114,15 +111,15 @@ jobs:
         run: |
           BIN="target/x86_64-apple-darwin/release/rusthound"
           codesign --force --sign - "$BIN" || true
-          tar czf "rusthound-macos-x86_64-${{ matrix.features.name }}.tar.gz" -C target/x86_64-apple-darwin/release rusthound
-          shasum -a 256 "rusthound-macos-x86_64-${{ matrix.features.name }}.tar.gz" > "rusthound-macos-x86_64-${{ matrix.features.name }}.tar.gz.sha256"
+          tar czf "rusthound-macos-x86_64-nogssapi.tar.gz" -C target/x86_64-apple-darwin/release rusthound
+          shasum -a 256 "rusthound-macos-x86_64-nogssapi.tar.gz" > "rusthound-macos-x86_64-nogssapi.tar.gz.sha256"
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: rusthound-macos-x86_64-${{ matrix.features.name }}
+          name: rusthound-macos-x86_64-nogssapi
           path: |
-            rusthound-macos-x86_64-${{ matrix.features.name }}.tar.gz
-            rusthound-macos-x86_64-${{ matrix.features.name }}.tar.gz.sha256
+            rusthound-macos-x86_64-nogssapi.tar.gz
+            rusthound-macos-x86_64-nogssapi.tar.gz.sha256
 
   build-linux-x86_64:
     runs-on: ubuntu-20.04
@@ -257,16 +254,14 @@ jobs:
             ## RustHound ${{ github.ref_name }}
 
             ### 平台支持
-            | 平台 | 架构 | 版本 |
-            |------|------|------|
-            | macOS | ARM64 (Apple Silicon) | ✅ default / nogssapi |
-            | macOS | x86_64 (Intel)    | ✅ default / nogssapi |
-            | Linux | x86_64            | ✅ default / nogssapi |
-            | Windows | x86_64         | ✅ default / nogssapi |
+            | 平台 | 架构 | 可用版本 |
+            |------|------|----------|
+            | macOS | ARM64 (Apple Silicon) | nogssapi (仅 TLS 认证) |
+            | macOS | x86_64 (Intel)    | nogssapi (仅 TLS 认证) |
+            | Linux | x86_64            | default (Kerberos) / nogssapi |
+            | Windows | x86_64         | default (Kerberos) / nogssapi |
 
-            ### 版本说明
-            - **default**: 完整功能，包含 GSSAPI/Kerberos 支持
-            - **nogssapi**: 不含 GSSAPI，仅 TLS 认证（更稳定）
+            > **macOS 说明**：由于 Apple 自带的 GSSAPI 缺少必要的 IOV 函数，无法编译带 Kerberos 的版本。`nogssapi` 版本使用 TLS 认证，功能完全可用。
 
             ### 校验和
             所有文件均附带 SHA256 校验文件。
