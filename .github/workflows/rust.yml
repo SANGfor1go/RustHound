@@ -1,79 +1,89 @@
-name: Build and Release RustHound
+name: Release
 
 on:
   push:
     tags:
-      - 'v*'              # 推送 v1.0.0 这类标签时触发
-  workflow_dispatch:        # 支持手动在 Actions 页面触发
+      - "v*"          # 推送 v 开头的 tag 时自动触发
+  workflow_dispatch:  # 允许手动触发
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
   build:
     strategy:
+      fail-fast: false  # 一个平台失败不取消其他平台
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-          - target: x86_64-apple-darwin
-            os: macos-latest
-          - target: aarch64-apple-darwin
-            os: macos-latest
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
+          # Linux 64-bit
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            ext: ""                     # 二进制文件无后缀
+            install_deps: true          # 需要安装 Kerberos 开发库
+
+          # Windows 64-bit
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            ext: ".exe"
+            install_deps: false
+
+          # macOS Intel
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            ext: ""
+            install_deps: false
+
+          # macOS Apple Silicon (可选，如需编译请取消注释)
+          # - os: macos-latest
+          #   target: aarch64-apple-darwin
+          #   ext: ""
+          #   install_deps: false
 
     runs-on: ${{ matrix.os }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.75.0"          # 固定版本，避免 time crate 不兼容
           targets: ${{ matrix.target }}
 
-      - name: Install cross-compilation dependencies (Linux ARM64)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}    # 不同目标缓存隔离
+
+      # Linux 需要安装 Kerberos 开发库，否则 ldap3/gssapi 链接失败
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux' && matrix.install_deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+          sudo apt-get install -y libkrb5-dev
 
       - name: Build release
-        run: cargo build --release --target ${{ matrix.target }}
+        run: |
+          cargo build --release --target ${{ matrix.target }} --verbose
 
       - name: Prepare artifact
         shell: bash
         run: |
-          BINARY_NAME="rusthound"
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            BINARY_NAME="${BINARY_NAME}.exe"
+          BIN_NAME="rusthound${{ matrix.ext }}"
+          cp "target/${{ matrix.target }}/release/$BIN_NAME" .
+          # 可选：打包为 zip 或 tar.gz
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            7z a "rusthound-${{ matrix.target }}.zip" "$BIN_NAME"
+          else
+            tar czf "rusthound-${{ matrix.target }}.tar.gz" "$BIN_NAME"
           fi
-          mkdir -p artifacts
-          cp target/${{ matrix.target }}/release/$BINARY_NAME artifacts/ || \
-          cp target/${{ matrix.target }}/release/rusthound artifacts/ 2>/dev/null || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target }}
-          path: artifacts/
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write       # 必须，否则无法创建 Release
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/**/*
-          token: ${{ secrets.GITHUB_TOKEN }}
+          name: rusthound-${{ matrix.target }}
+          path: |
+            rusthound${{ matrix.ext }}
+            rusthound-${{ matrix.target }}.*
