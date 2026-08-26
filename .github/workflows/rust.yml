@@ -1,0 +1,79 @@
+name: Build and Release RustHound
+
+on:
+  push:
+    tags:
+      - 'v*'              # 推送 v1.0.0 这类标签时触发
+  workflow_dispatch:        # 支持手动在 Actions 页面触发
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation dependencies (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+
+      - name: Build release
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          BINARY_NAME="rusthound"
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+          mkdir -p artifacts
+          cp target/${{ matrix.target }}/release/$BINARY_NAME artifacts/ || \
+          cp target/${{ matrix.target }}/release/rusthound artifacts/ 2>/dev/null || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: artifacts/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # 必须，否则无法创建 Release
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          token: ${{ secrets.GITHUB_TOKEN }}
