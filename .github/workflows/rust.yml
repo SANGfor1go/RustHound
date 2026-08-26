@@ -26,7 +26,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.65.0"
+          toolchain: "1.75.0"
           targets: aarch64-apple-darwin
 
       - uses: actions/cache@v4
@@ -35,8 +35,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: macos-arm64-${{ matrix.features.name }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: macos-arm64-${{ matrix.features.name }}-
+          key: macos-arm64-${{ matrix.features.name }}-v2-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: macos-arm64-${{ matrix.features.name }}-v2-
 
       - name: Build (${{ matrix.features.name }})
         run: |
@@ -85,7 +85,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.65.0"
+          toolchain: "1.75.0"
           targets: x86_64-apple-darwin
       - uses: actions/cache@v4
         with:
@@ -93,8 +93,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: macos-x86_64-${{ matrix.features.name }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: macos-x86_64-${{ matrix.features.name }}-
+          key: macos-x86_64-${{ matrix.features.name }}-v2-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: macos-x86_64-${{ matrix.features.name }}-v2-
       - name: Build (${{ matrix.features.name }})
         run: |
           set -o pipefail
@@ -138,7 +138,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.65.0"
+          toolchain: "1.75.0"
           targets: x86_64-unknown-linux-gnu
       - uses: actions/cache@v4
         with:
@@ -146,8 +146,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: linux-x86_64-${{ matrix.features.name }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: linux-x86_64-${{ matrix.features.name }}-
+          key: linux-x86_64-${{ matrix.features.name }}-v2-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: linux-x86_64-${{ matrix.features.name }}-v2-
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -195,7 +195,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.65.0"
+          toolchain: "1.75.0"
           targets: x86_64-pc-windows-msvc
       - uses: actions/cache@v4
         with:
@@ -203,8 +203,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: windows-x86_64-${{ matrix.features.name }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: windows-x86_64-${{ matrix.features.name }}-
+          key: windows-x86_64-${{ matrix.features.name }}-v2-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: windows-x86_64-${{ matrix.features.name }}-v2-
       - name: Build (${{ matrix.features.name }})
         shell: pwsh
         run: |
@@ -242,8 +242,7 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
       - name: Flatten artifacts
@@ -251,8 +250,7 @@ jobs:
           mkdir -p release
           find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" \) -exec cp {} release/ \;
           ls -la release/
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+      - uses: softprops/action-gh-release@v1
         with:
           name: "Release ${{ github.ref_name }}"
           body: |
