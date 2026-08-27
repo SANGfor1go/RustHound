@@ -1,272 +1,138 @@
-name: Build All Platforms (Full)
+name: Build and Release
 
 on:
-  workflow_dispatch:
   push:
+    branches: [ "master" ]
     tags:
-      - "v*"
+      - 'v*'
+  pull_request:
+    branches: [ "master" ]
 
 env:
   CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: full
+  PROJECT_NAME: rusthound
 
 jobs:
-  build-macos-arm64:
-    runs-on: macos-14
-    strategy:
-      fail-fast: false
-      matrix:
-        features:
-          # macOS GSSAPI 不支持 IOV 功能，只构建 nogssapi
-          - name: "nogssapi"
-            flag: "--no-default-features --features nogssapi"
+  build-linux-x86_64:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.75.0"
-          targets: aarch64-apple-darwin
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: macos-arm64-nogssapi-v2-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: macos-arm64-nogssapi-v2-
-
-      - name: Build (nogssapi)
-        run: |
-          set -o pipefail
-          cargo build --release --target aarch64-apple-darwin ${{ matrix.features.flag }} --verbose 2>&1 | tee build.log
-
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: log-macos-arm64-nogssapi
-          path: build.log
-
-      - name: Verify binary exists
-        if: success()
-        run: |
-          test -f target/aarch64-apple-darwin/release/rusthound || (echo "Binary not found!" && exit 1)
-
-      - name: Package binary
-        if: success()
-        run: |
-          BIN="target/aarch64-apple-darwin/release/rusthound"
-          codesign --force --sign - "$BIN" || true
-          tar czf "rusthound-macos-arm64-nogssapi.tar.gz" -C target/aarch64-apple-darwin/release rusthound
-          shasum -a 256 "rusthound-macos-arm64-nogssapi.tar.gz" > "rusthound-macos-arm64-nogssapi.tar.gz.sha256"
-
-      - uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: rusthound-macos-arm64-nogssapi
-          path: |
-            rusthound-macos-arm64-nogssapi.tar.gz
-            rusthound-macos-arm64-nogssapi.tar.gz.sha256
+    - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libkrb5-dev
+    - name: Build default
+      run: cargo build --release
+    - name: Prepare default artifacts
+      run: |
+        mkdir -p artifacts/linux-x86_64-default
+        cp target/release/rusthound artifacts/linux-x86_64-default/
+        cd artifacts
+        tar -czf ${{ env.PROJECT_NAME }}-linux-x86_64-default.tar.gz linux-x86_64-default
+        sha256sum ${{ env.PROJECT_NAME }}-linux-x86_64-default.tar.gz > ${{ env.PROJECT_NAME }}-linux-x86_64-default.tar.gz.sha256
+    - name: Build nogssapi
+      run: cargo build --release --no-default-features
+    - name: Prepare nogssapi artifacts
+      run: |
+        mkdir -p artifacts/linux-x86_64-nogssapi
+        cp target/release/rusthound artifacts/linux-x86_64-nogssapi/
+        cd artifacts
+        tar -czf ${{ env.PROJECT_NAME }}-linux-x86_64-nogssapi.tar.gz linux-x86_64-nogssapi
+        sha256sum ${{ env.PROJECT_NAME }}-linux-x86_64-nogssapi.tar.gz > ${{ env.PROJECT_NAME }}-linux-x86_64-nogssapi.tar.gz.sha256
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux-x86_64
+        path: |
+          artifacts/${{ env.PROJECT_NAME }}-linux-x86_64-default.tar.gz
+          artifacts/${{ env.PROJECT_NAME }}-linux-x86_64-default.tar.gz.sha256
+          artifacts/${{ env.PROJECT_NAME }}-linux-x86_64-nogssapi.tar.gz
+          artifacts/${{ env.PROJECT_NAME }}-linux-x86_64-nogssapi.tar.gz.sha256
 
   build-macos-x86_64:
     runs-on: macos-13
-    strategy:
-      fail-fast: false
-      matrix:
-        features:
-          - name: "nogssapi"
-            flag: "--no-default-features --features nogssapi"
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.75.0"
-          targets: x86_64-apple-darwin
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: macos-x86_64-nogssapi-v2-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: macos-x86_64-nogssapi-v2-
-      - name: Build (nogssapi)
-        run: |
-          set -o pipefail
-          cargo build --release --target x86_64-apple-darwin ${{ matrix.features.flag }} --verbose 2>&1 | tee build.log
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: log-macos-x86_64-nogssapi
-          path: build.log
-      - name: Verify binary exists
-        if: success()
-        run: |
-          test -f target/x86_64-apple-darwin/release/rusthound || (echo "Binary not found!" && exit 1)
-      - name: Package binary
-        if: success()
-        run: |
-          BIN="target/x86_64-apple-darwin/release/rusthound"
-          codesign --force --sign - "$BIN" || true
-          tar czf "rusthound-macos-x86_64-nogssapi.tar.gz" -C target/x86_64-apple-darwin/release rusthound
-          shasum -a 256 "rusthound-macos-x86_64-nogssapi.tar.gz" > "rusthound-macos-x86_64-nogssapi.tar.gz.sha256"
-      - uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: rusthound-macos-x86_64-nogssapi
-          path: |
-            rusthound-macos-x86_64-nogssapi.tar.gz
-            rusthound-macos-x86_64-nogssapi.tar.gz.sha256
+    - uses: actions/checkout@v4
+    - name: Build default
+      run: cargo build --release
+    - name: Prepare default artifacts
+      run: |
+        mkdir -p artifacts/macos-x86_64-default
+        cp target/release/rusthound artifacts/macos-x86_64-default/
+        cd artifacts
+        tar -czf ${{ env.PROJECT_NAME }}-macos-x86_64-default.tar.gz macos-x86_64-default
+        shasum -a 256 ${{ env.PROJECT_NAME }}-macos-x86_64-default.tar.gz > ${{ env.PROJECT_NAME }}-macos-x86_64-default.tar.gz.sha256
+    - name: Build nogssapi
+      run: cargo build --release --no-default-features
+    - name: Prepare nogssapi artifacts
+      run: |
+        mkdir -p artifacts/macos-x86_64-nogssapi
+        cp target/release/rusthound artifacts/macos-x86_64-nogssapi/
+        cd artifacts
+        tar -czf ${{ env.PROJECT_NAME }}-macos-x86_64-nogssapi.tar.gz macos-x86_64-nogssapi
+        shasum -a 256 ${{ env.PROJECT_NAME }}-macos-x86_64-nogssapi.tar.gz > ${{ env.PROJECT_NAME }}-macos-x86_64-nogssapi.tar.gz.sha256
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: macos-x86_64
+        path: |
+          artifacts/${{ env.PROJECT_NAME }}-macos-x86_64-default.tar.gz
+          artifacts/${{ env.PROJECT_NAME }}-macos-x86_64-default.tar.gz.sha256
+          artifacts/${{ env.PROJECT_NAME }}-macos-x86_64-nogssapi.tar.gz
+          artifacts/${{ env.PROJECT_NAME }}-macos-x86_64-nogssapi.tar.gz.sha256
 
-  build-linux-x86_64:
-    runs-on: ubuntu-20.04
-    strategy:
-      fail-fast: false
-      matrix:
-        features:
-          - name: "default"
-            flag: ""
-          - name: "nogssapi"
-            flag: "--no-default-features --features nogssapi"
+  build-macos-aarch64:
+    runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.75.0"
-          targets: x86_64-unknown-linux-gnu
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: linux-x86_64-${{ matrix.features.name }}-v2-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: linux-x86_64-${{ matrix.features.name }}-v2-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libkrb5-dev libssl-dev pkg-config build-essential
-      - name: Build (${{ matrix.features.name }})
-        run: |
-          set -o pipefail
-          cargo build --release --target x86_64-unknown-linux-gnu ${{ matrix.features.flag }} --verbose 2>&1 | tee build.log
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: log-linux-x86_64-${{ matrix.features.name }}
-          path: build.log
-      - name: Verify binary exists
-        if: success()
-        run: |
-          test -f target/x86_64-unknown-linux-gnu/release/rusthound || (echo "Binary not found!" && exit 1)
-      - name: Package binary
-        if: success()
-        run: |
-          BIN="target/x86_64-unknown-linux-gnu/release/rusthound"
-          strip "$BIN" || true
-          tar czf "rusthound-linux-x86_64-${{ matrix.features.name }}.tar.gz" -C target/x86_64-unknown-linux-gnu/release rusthound
-          shasum -a 256 "rusthound-linux-x86_64-${{ matrix.features.name }}.tar.gz" > "rusthound-linux-x86_64-${{ matrix.features.name }}.tar.gz.sha256"
-      - uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: rusthound-linux-x86_64-${{ matrix.features.name }}
-          path: |
-            rusthound-linux-x86_64-${{ matrix.features.name }}.tar.gz
-            rusthound-linux-x86_64-${{ matrix.features.name }}.tar.gz.sha256
-
-  build-windows-x86_64:
-    runs-on: windows-2019
-    strategy:
-      fail-fast: false
-      matrix:
-        features:
-          - name: "default"
-            flag: ""
-          - name: "nogssapi"
-            flag: "--no-default-features --features nogssapi"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.75.0"
-          targets: x86_64-pc-windows-msvc
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: windows-x86_64-${{ matrix.features.name }}-v2-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: windows-x86_64-${{ matrix.features.name }}-v2-
-      - name: Build (${{ matrix.features.name }})
-        shell: pwsh
-        run: |
-          cargo build --release --target x86_64-pc-windows-msvc ${{ matrix.features.flag }} --verbose *>&1 | Tee-Object -FilePath build.log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: log-windows-x86_64-${{ matrix.features.name }}
-          path: build.log
-      - name: Package binary
-        if: success()
-        shell: pwsh
-        run: |
-          $bin = "target/x86_64-pc-windows-msvc/release/rusthound.exe"
-          if (-not (Test-Path $bin)) { Write-Error "Binary not found!"; exit 1 }
-          $dest = "rusthound-windows-x86_64-${{ matrix.features.name }}.zip"
-          Compress-Archive -Path $bin -DestinationPath $dest
-          (Get-FileHash $dest -Algorithm SHA256).Hash + "  " + $dest | Out-File -Encoding ASCII "$dest.sha256"
-      - uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: rusthound-windows-x86_64-${{ matrix.features.name }}
-          path: |
-            rusthound-windows-x86_64-${{ matrix.features.name }}.zip
-            rusthound-windows-x86_64-${{ matrix.features.name }}.zip.sha256
+    - uses: actions/checkout@v4
+    - name: Build default
+      run: cargo build --release
+    - name: Prepare default artifacts
+      run: |
+        mkdir -p artifacts/macos-aarch64-default
+        cp target/release/rusthound artifacts/macos-aarch64-default/
+        cd artifacts
+        tar -czf ${{ env.PROJECT_NAME }}-macos-aarch64-default.tar.gz macos-aarch64-default
+        shasum -a 256 ${{ env.PROJECT_NAME }}-macos-aarch64-default.tar.gz > ${{ env.PROJECT_NAME }}-macos-aarch64-default.tar.gz.sha256
+    - name: Build nogssapi
+      run: cargo build --release --no-default-features
+    - name: Prepare nogssapi artifacts
+      run: |
+        mkdir -p artifacts/macos-aarch64-nogssapi
+        cp target/release/rusthound artifacts/macos-aarch64-nogssapi/
+        cd artifacts
+        tar -czf ${{ env.PROJECT_NAME }}-macos-aarch64-nogssapi.tar.gz macos-aarch64-nogssapi
+        shasum -a 256 ${{ env.PROJECT_NAME }}-macos-aarch64-nogssapi.tar.gz > ${{ env.PROJECT_NAME }}-macos-aarch64-nogssapi.tar.gz.sha256
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: macos-aarch64
+        path: |
+          artifacts/${{ env.PROJECT_NAME }}-macos-aarch64-default.tar.gz
+          artifacts/${{ env.PROJECT_NAME }}-macos-aarch64-default.tar.gz.sha256
+          artifacts/${{ env.PROJECT_NAME }}-macos-aarch64-nogssapi.tar.gz
+          artifacts/${{ env.PROJECT_NAME }}-macos-aarch64-nogssapi.tar.gz.sha256
 
   create-release:
-    needs:
-      - build-macos-arm64
-      - build-macos-x86_64
-      - build-linux-x86_64
-      - build-windows-x86_64
+    needs: [build-linux-x86_64, build-macos-x86_64, build-macos-aarch64]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
         with:
-          path: artifacts
-      - name: Flatten artifacts
-        run: |
-          mkdir -p release
-          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" \) -exec cp {} release/ \;
-          ls -la release/
-      - uses: softprops/action-gh-release@v1
+          path: release-assets
+          merge-multiple: true
+          
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: "Release ${{ github.ref_name }}"
-          body: |
-            ## RustHound ${{ github.ref_name }}
-
-            ### 平台支持
-            | 平台 | 架构 | 可用版本 |
-            |------|------|----------|
-            | macOS | ARM64 (Apple Silicon) | nogssapi (仅 TLS 认证) |
-            | macOS | x86_64 (Intel)    | nogssapi (仅 TLS 认证) |
-            | Linux | x86_64            | default (Kerberos) / nogssapi |
-            | Windows | x86_64         | default (Kerberos) / nogssapi |
-
-            > **macOS 说明**：由于 Apple 自带的 GSSAPI 缺少必要的 IOV 函数，无法编译带 Kerberos 的版本。`nogssapi` 版本使用 TLS 认证，功能完全可用。
-
-            ### 校验和
-            所有文件均附带 SHA256 校验文件。
-          files: release/*
-          draft: false
-          prerelease: false
+          name: Release ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            release-assets/${{ env.PROJECT_NAME }}-*.tar.gz
+            release-assets/${{ env.PROJECT_NAME }}-*.tar.gz.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
